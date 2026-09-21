@@ -44,8 +44,8 @@ pages-from-my-life/
 │   │                         Original/English/中文 translation tabs),
 │   │                         the editor, autosave, demo data, draft recovery
 │   ├── app.js                Router, render dispatcher, event binding, FAB, bootstrap
-│   └── firebase-sync.js      Optional Firebase (Firestore+Storage+Auth) cloud sync — loaded
-│                             as an ES module (<script type="module">), see "Cloud Sync" below
+│   └── firebase-sync.js      Optional Firebase (Realtime Database + Anonymous Auth) cloud sync —
+│                             loaded as an ES module (<script type="module">), see "Cloud Sync" below
 └── assets/
     ├── icons/                PWA icons (placeholders — swap for your own)
     └── images/               (empty — for any images you add yourself)
@@ -121,9 +121,8 @@ Off by default — the diary stays local-only (IndexedDB) until you turn
 this on. When you do, **Settings → Cloud Sync** lets you set a **Sync
 Code** (a private passphrase you choose) and press **Sync Now**, which:
 
-1. Pushes every local entry to Firestore, uploading any not-yet-uploaded
-   photos/voice notes to Firebase Storage first (already-uploaded media
-   is skipped on repeat syncs, so it stays cheap).
+1. Pushes every local entry — including photos/voice notes as base64 —
+   to the Firebase **Realtime Database**.
 2. Pulls anything from the cloud that's missing locally or newer than
    your local copy (compared by each entry's last-edited time) and
    merges it in.
@@ -133,45 +132,48 @@ Use the **same Sync Code** on another device's copy of this app and
 background sync — you press the button when you want to sync, so
 nothing happens without you asking.
 
+**Why Realtime Database and not Firestore/Storage?** Firebase now
+requires a paid **Blaze** billing plan just to turn on Cloud Storage,
+even if you never leave the free quota. Realtime Database has no such
+requirement — it's fully usable on the free **Spark** plan, so that's
+what this app uses for both entry data and photo/audio bytes.
+
 **⚠️ Only works on a self-hosted copy (e.g. GitHub Pages), not the
 Claude artifact link.** Firebase's SDK loads from `www.gstatic.com`,
 and the Claude artifact preview's content-security policy blocks
 scripts from that host. Settings will tell you this plainly instead of
 just spinning forever.
 
-**One-time Firebase console setup** (skip if you've done this for your
-other apps' project, but this app uses its own project from the config
-already wired into `js/firebase-sync.js`):
+**One-time Firebase console setup:**
 
-1. **Authentication → Sign-in method → Anonymous → Enable.** This app
-   signs in anonymously purely so Firestore/Storage rules can require
-   "must be signed in" — there's no email/password screen for you.
-2. **Firestore Database → Rules**, paste:
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /syncCodes/{code}/entries/{entryId} {
-         allow read, write: if request.auth != null;
+1. **Realtime Database → Create Database.** Pick any region, Spark
+   (free) plan — no billing needed. Once created, Firebase shows a
+   **databaseURL** at the top of the Data tab, looking like
+   `https://k3t3-e89c0-default-rtdb.<region>.firebasedatabase.app`.
+   Paste that exact URL into `firebaseConfig.databaseURL` near the top
+   of `js/firebase-sync.js` (it ships with a placeholder there) — sync
+   won't connect without this.
+2. **Authentication → Sign-in method → Anonymous → Enable.** This app
+   signs in anonymously purely so the rule below can require "must be
+   signed in" — there's no email/password screen for you.
+3. **Realtime Database → Rules**, replace the contents with:
+   ```json
+   {
+     "rules": {
+       "syncCodes": {
+         "$code": {
+           ".read": "auth != null",
+           ".write": "auth != null"
+         }
        }
      }
    }
    ```
-3. **Storage → Rules**, paste:
-   ```
-   rules_version = '2';
-   service firebase.storage {
-     match /b/{bucket}/o {
-       match /syncCodes/{code}/{allPaths=**} {
-         allow read, write: if request.auth != null;
-       }
-     }
-   }
-   ```
+   then **Publish**.
 
 **Security model, plainly:** your Sync Code is a shared secret, not a
 login — anyone who learns it can read and write that code's data (the
-rules above only check "is this a signed-in Firebase user", which
+rule above only checks "is this a signed-in Firebase user", which
 anonymous sign-in satisfies for anyone). This keeps out casual internet
 crawlers, not a determined attacker who somehow learns your code. Pick
 something you wouldn't post publicly, and treat it like a password.

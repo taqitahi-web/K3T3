@@ -1,6 +1,9 @@
-/* firebase-sync.js — optional cloud sync using YOUR Firebase project
-   (Firestore for entry data, Storage for photos/voice notes, Anonymous
-   Auth just to satisfy security rules that require request.auth != null).
+/* firebase-sync.js — optional cloud sync using YOUR Firebase project,
+   via the Realtime Database (Firestore + Cloud Storage were dropped
+   because Firebase now requires a paid Blaze plan just to enable
+   Storage, even for free-tier usage — Realtime Database stays free on
+   the Spark plan). Anonymous Auth is used only so the security rules
+   below can require "must be signed in".
 
    This file is loaded as a native ES module:
      <script type="module" src="js/firebase-sync.js"></script>
@@ -9,23 +12,25 @@
    useful here is attached to `window.cloudSync` — see js/sync.js for
    the plain-JS orchestration that calls it.
 
-   IMPORTANT — read before turning this on (also see README.md):
-   1. In the Firebase console, enable Authentication → Sign-in method →
-      Anonymous.
-   2. Set Firestore rules and Storage rules to require request.auth !=
-      null (exact rules are in README.md). Without this, your data is
-      wide open to the internet; with only this, anyone who learns your
-      "Sync Code" (set in Settings → Cloud Sync) can read/write that
-      code's data — the code is a shared secret, not a login. Keep it
-      private, the same way you'd keep a shared folder link private. */
+   IMPORTANT — one-time setup (also see README.md):
+   1. Firebase console → Realtime Database → Create Database (Spark/free
+      plan is fine — no billing needed).
+   2. Copy the databaseURL Firebase shows you (looks like
+      https://<project>-default-rtdb.<region>.firebasedatabase.app) into
+      firebaseConfig.databaseURL below.
+   3. Authentication → Sign-in method → Anonymous → Enable.
+   4. Realtime Database → Rules → paste the JSON rules from README.md.
+   Without step 4 your data is wide open to the internet; with only
+   that, anyone who learns your "Sync Code" (set in Settings → Cloud
+   Sync) can read/write that code's data — the code is a shared secret,
+   not a login. Keep it private, the same way you'd keep a shared
+   folder link private. */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
-import { getFirestore, doc, setDoc, deleteDoc, getDocs, collection }
-  from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
-import { getStorage, ref, uploadString, getDownloadURL }
-  from "https://www.gstatic.com/firebasejs/12.19.0/firebase-storage.js";
+import { getDatabase, ref, set, get, remove }
+  from "https://www.gstatic.com/firebasejs/12.19.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBWvX2LgPOuDygfmXdyIbfQD_d0z0njvb4",
@@ -33,13 +38,17 @@ const firebaseConfig = {
   projectId: "k3t3-e89c0",
   storageBucket: "k3t3-e89c0.firebasestorage.app",
   messagingSenderId: "629317146848",
-  appId: "1:629317146848:web:ce27c836c75bf33af09885"
+  appId: "1:629317146848:web:ce27c836c75bf33af09885",
+  // ⬇️ REQUIRED for Realtime Database — paste the URL Firebase shows you
+  // right after you create the database (Firebase console → Realtime
+  // Database → top of the Data tab). Looks like:
+  // "https://k3t3-e89c0-default-rtdb.asia-southeast1.firebasedatabase.app"
+  databaseURL: "https://k3t3-e89c0-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
-const storage = getStorage(app);
+const db = getDatabase(app);
 
 const authReady = new Promise(resolve=>{
   onAuthStateChanged(auth, user=>{
@@ -48,32 +57,13 @@ const authReady = new Promise(resolve=>{
   });
 });
 
-function entriesCol(code){ return collection(db, 'syncCodes', code, 'entries'); }
-function entryDoc(code, id){ return doc(db, 'syncCodes', code, 'entries', id); }
-
-// Uploads a local base64 photo/audio item to Storage the first time
-// (its dataUrl still starts with "data:"); an item already synced once
-// carries an https URL and is returned as-is, so re-syncing is cheap.
-async function uploadMediaIfLocal(code, item, kind){
-  if(!item.dataUrl || !item.dataUrl.startsWith('data:')) return item.dataUrl;
-  const path = `syncCodes/${code}/${kind}/${item.id}`;
-  const r = ref(storage, path);
-  await uploadString(r, item.dataUrl, 'data_url');
-  return await getDownloadURL(r);
-}
+function entriesPath(code){ return `syncCodes/${code}/entries`; }
+function entryPath(code, id){ return `syncCodes/${code}/entries/${id}`; }
 
 async function pushEntry(code, entry){
   await authReady;
-  const photos = [];
-  for(const p of (entry._photos||[])){
-    const url = await uploadMediaIfLocal(code, p, 'photos');
-    photos.push({id:p.id, url, caption:p.caption||''});
-  }
-  const audio = [];
-  for(const a of (entry._audio||[])){
-    const url = await uploadMediaIfLocal(code, a, 'audio');
-    audio.push({id:a.id, url});
-  }
+  const photos = (entry._photos||[]).map(p=>({id:p.id, dataUrl:p.dataUrl, caption:p.caption||''}));
+  const audio = (entry._audio||[]).map(a=>({id:a.id, dataUrl:a.dataUrl}));
   const payload = {
     date: entry.date, time: entry.time, title: entry.title||'', content: entry.content||'',
     mood: entry.mood||'', weather: entry.weather||'', temperature: entry.temperature||'', location: entry.location||'',
@@ -81,7 +71,7 @@ async function pushEntry(code, entry){
     translations: entry.translations||{}, photos, audio,
     createdAt: entry.createdAt, updatedAt: entry.updatedAt
   };
-  await setDoc(entryDoc(code, entry.id), payload);
+  await set(ref(db, entryPath(code, entry.id)), payload);
 }
 
 async function pushAll(code, entries){
@@ -92,14 +82,17 @@ async function pushAll(code, entries){
 
 async function deleteRemoteEntry(code, id){
   await authReady;
-  await deleteDoc(entryDoc(code, id)).catch(()=>{});
+  await remove(ref(db, entryPath(code, id))).catch(()=>{});
 }
 
 async function pullAll(code){
   await authReady;
-  const snap = await getDocs(entriesCol(code));
+  const snap = await get(ref(db, entriesPath(code)));
   const out = [];
-  snap.forEach(d=> out.push(Object.assign({id:d.id}, d.data())));
+  if(snap.exists()){
+    const val = snap.val();
+    for(const id of Object.keys(val)) out.push(Object.assign({id}, val[id]));
+  }
   return out;
 }
 

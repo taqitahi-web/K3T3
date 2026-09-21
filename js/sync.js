@@ -50,11 +50,11 @@ async function syncNow(){
       await DB.put('entries', entry);
       for(const p of (r.photos||[])){
         const existing = await DB.get('photos', p.id);
-        if(!existing) await DB.put('photos', {id:p.id, entryId:r.id, dataUrl:p.url, caption:p.caption||''});
+        if(!existing) await DB.put('photos', {id:p.id, entryId:r.id, dataUrl:p.dataUrl, caption:p.caption||''});
       }
       for(const a of (r.audio||[])){
         const existing = await DB.get('audio', a.id);
-        if(!existing) await DB.put('audio', {id:a.id, entryId:r.id, dataUrl:a.url});
+        if(!existing) await DB.put('audio', {id:a.id, entryId:r.id, dataUrl:a.dataUrl});
       }
       pulled++;
     }
