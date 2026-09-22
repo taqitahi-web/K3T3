@@ -115,6 +115,8 @@ function bindDynamicEvents(){
     const e = ENTRIES.find(x=>x.id===b.dataset.pinEntry); e.pinned=!e.pinned; await DB.put('entries', stripDenorm(e)); await loadAllWithMedia(); render();
   }));
   $$('[data-print-entry]').forEach(b=> b.addEventListener('click', ()=> window.print()));
+  $$('[data-share-link]').forEach(b=> b.addEventListener('click', ()=> shareEntryLink(b.dataset.shareLink)));
+  $$('[data-share-file]').forEach(b=> b.addEventListener('click', ()=> shareEntryAsFile(b.dataset.shareFile)));
   $$('[data-print-month]').forEach(b=> b.addEventListener('click', ()=> window.print()));
   $$('[data-delete-entry]').forEach(b=> b.addEventListener('click', async ()=>{
     const ok = await promptPin('Enter your PIN to delete this entry.');
@@ -125,7 +127,6 @@ function bindDynamicEvents(){
       for(const p of (e._photos||[])) await DB.delete('photos', p.id);
       for(const a of (e._audio||[])) await DB.delete('audio', a.id);
       await DB.delete('entries', id);
-      if(SETTINGS.syncCode && window.cloudSync) window.cloudSync.deleteRemoteEntry(SETTINGS.syncCode, id).catch(()=>{});
       await loadAllWithMedia(); renderYearNav();
       toast('Entry deleted');
       navigate('home');
@@ -148,15 +149,6 @@ function bindDynamicEvents(){
     if(!a || a.length<4){ toast('PIN should be at least 4 digits'); return; }
     if(a!==b){ toast("PINs don't match"); return; }
     SETTINGS.pin = a; await saveSettings(); toast('✓ PIN updated'); $('#pin-new').value=''; $('#pin-confirm').value='';
-  });
-
-  const btnSaveSyncCode = $('#btn-save-synccode');
-  if(btnSaveSyncCode) btnSaveSyncCode.addEventListener('click', async ()=>{
-    SETTINGS.syncCode = $('#sync-code').value.trim();
-    await saveSettings();
-    if(CURRENT_ROUTE==='settings') render();
-    if(SETTINGS.syncCode){ toast('✓ Sync Code saved — syncing now'); syncNow(); }
-    else toast('Sync Code cleared — cloud sync is off');
   });
 }
 
@@ -199,13 +191,13 @@ function bindStaticEvents(){
 
 /* ---------------- Bootstrap ---------------- */
 async function init(){
+  if(tryRenderSharedEntry()) return; // standalone read-only mode for a shared link
   dbInstance = await openDatabase();
   await loadAllWithMedia();
   renderYearNav();
   bindStaticEvents();
   navigate('home');
   checkDraftRecovery();
-  autoPullOnStartup(); // fire-and-forget; see sync.js
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('service-worker.js').catch(()=>{ /* offline install is optional */ });

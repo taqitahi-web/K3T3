@@ -3,7 +3,7 @@
    and draft recovery. */
 
 let ENTRIES = [];      // all entries, denormalized with _photos/_audio, sorted desc
-let SETTINGS = {theme:'colorful', lastBackup:null, pin:null, syncCode:'', lastSync:null};
+let SETTINGS = {theme:'colorful', lastBackup:null, pin:null};
 let CURRENT_ROUTE = 'home';
 let CURRENT_PARAMS = {};
 
@@ -254,19 +254,6 @@ function view_settings(){
       <button class="btn" id="btn-save-pin">Save PIN</button>
     </div>
     <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-top:0;">Cloud Sync (Firebase)</h3>
-      <p class="muted" style="font-size:0.85rem;">Optional. Set a Sync Code once, and after that it's automatic: every add/edit/delete pushes to your own Firebase project right away, and opening the app on any device with the same code pulls in what's new. Off by default; your diary stays local-only until you set a code here.</p>
-      <div class="field" style="max-width:340px;">
-        <label>Sync Code</label>
-        <input type="text" id="sync-code" placeholder="choose a private code/passphrase" value="${escapeHTML(SETTINGS.syncCode||'')}">
-      </div>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="btn" id="btn-save-synccode">Save Code</button>
-        <span class="muted" style="font-size:0.8rem;">${escapeHTML(syncStatusLine())}</span>
-      </div>
-      <p class="muted" style="font-size:0.78rem; margin-top:10px; margin-bottom:0;">The Sync Code is a shared secret, not a login — anyone who knows it can read/write that code's data, so keep it as private as a password. See README.md for the one-time Firebase console setup (enable Anonymous sign-in, set the security rules).</p>
-    </div>
-    <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">Demo Data</h3>
       <div style="display:flex; gap:10px;">
         <button class="btn" id="btn-load-demo">Load Demo Data</button>
@@ -276,7 +263,7 @@ function view_settings(){
     <div class="card">
       <h3 style="margin-top:0;">Privacy</h3>
       <p style="font-size:0.85rem;">Your journal is stored locally on this device, in this browser's storage.<br><br>
-      Nothing is uploaded automatically. There is no analytics or tracking. Journal data only leaves this device if you explicitly export it, or if you turn on Cloud Sync above with your own Sync Code (in which case it goes to your own Firebase project, nowhere else).</p>
+      Nothing is uploaded automatically. There is no analytics or tracking. Journal data is never sent to third-party services — it only leaves this device if you explicitly export it.</p>
     </div>
     <div class="muted" style="font-size:0.72rem; margin-top:18px;">Keyboard shortcuts: Ctrl/Cmd+N new entry · Ctrl/Cmd+K search · Esc close</div>
   `;
@@ -324,6 +311,8 @@ function view_entry_detail(){
         <button class="btn" data-fav-entry="${e.id}">${e.favorite?'⭐ Unfavorite':'☆ Favorite'}</button>
         <button class="btn" data-pin-entry="${e.id}">${e.pinned?'📌 Unpin':'📌 Pin'}</button>
         <button class="btn" data-print-entry="${e.id}">🖨️ Print</button>
+        <button class="btn" data-share-link="${e.id}">🔗 Share Link</button>
+        <button class="btn" data-share-file="${e.id}">📄 Share as File</button>
         <button class="btn btn-danger" data-delete-entry="${e.id}">🗑️ Delete</button>
       </div>
     `;
@@ -504,8 +493,6 @@ async function saveEntry(navigateAway){
   await DB.delete('drafts', 'current').catch(()=>{});
   await loadAllWithMedia();
   renderYearNav();
-  const savedEntry = ENTRIES.find(x=>x.id===entry.id);
-  if(savedEntry) autoPushEntry(savedEntry); // fire-and-forget; see sync.js
   if(navigateAway!==false){ navigate('entry',{id:entry.id}); toast('✓ Entry saved'); }
   else { setSaveIndicator('✓ Saved'); }
 }
