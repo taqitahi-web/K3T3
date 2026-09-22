@@ -154,8 +154,9 @@ function bindDynamicEvents(){
   if(btnSaveSyncCode) btnSaveSyncCode.addEventListener('click', async ()=>{
     SETTINGS.syncCode = $('#sync-code').value.trim();
     await saveSettings();
-    toast(SETTINGS.syncCode? '✓ Sync Code saved' : 'Sync Code cleared — cloud sync is off');
     if(CURRENT_ROUTE==='settings') render();
+    if(SETTINGS.syncCode){ toast('✓ Sync Code saved — syncing now'); syncNow(); }
+    else toast('Sync Code cleared — cloud sync is off');
   });
   const btnSyncNow = $('#btn-sync-now');
   if(btnSyncNow) btnSyncNow.addEventListener('click', syncNow);
@@ -206,6 +207,7 @@ async function init(){
   bindStaticEvents();
   navigate('home');
   checkDraftRecovery();
+  autoPullOnStartup(); // fire-and-forget; see sync.js
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('service-worker.js').catch(()=>{ /* offline install is optional */ });

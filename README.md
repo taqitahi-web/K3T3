@@ -117,20 +117,19 @@ always the same color across the whole app, in every theme.
 
 ## Cloud Sync (Firebase)
 
-Off by default — the diary stays local-only (IndexedDB) until you turn
-this on. When you do, **Settings → Cloud Sync** lets you set a **Sync
-Code** (a private passphrase you choose) and press **Sync Now**, which:
+Off by default — the diary stays local-only (IndexedDB) until you set a
+**Sync Code** in **Settings → Cloud Sync**. Once you do, it's automatic:
 
-1. Pushes every local entry — including photos/voice notes as base64 —
-   to the Firebase **Realtime Database**.
-2. Pulls anything from the cloud that's missing locally or newer than
-   your local copy (compared by each entry's last-edited time) and
-   merges it in.
+1. Every add/edit/delete pushes just that one entry (including its
+   photos/voice notes, as base64) to your Firebase **Realtime
+   Database** right away.
+2. Opening the app pulls anything newer from the cloud once in the
+   background — no button needed.
 
 Use the **same Sync Code** on another device's copy of this app and
-"Sync Now" there to bring your diary across. There's no automatic
-background sync — you press the button when you want to sync, so
-nothing happens without you asking.
+it'll pick up existing entries the next time it opens (or press the
+manual **🔄 Sync Now** button in Settings to pull immediately, which is
+also there as a fallback if a push failed while offline).
 
 **Why Realtime Database and not Firestore/Storage?** Firebase now
 requires a paid **Blaze** billing plan just to turn on Cloud Storage,

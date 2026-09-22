@@ -255,17 +255,17 @@ function view_settings(){
     </div>
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">Cloud Sync (Firebase)</h3>
-      <p class="muted" style="font-size:0.85rem;">Optional. Turning this on sends your entries — including photos and voice notes — to your own Firebase project, so the same Sync Code on another device can pull them down too. Off by default; your diary stays local-only until you set a code here.</p>
+      <p class="muted" style="font-size:0.85rem;">Optional. Set a Sync Code once, and after that it's automatic: every add/edit/delete pushes to your own Firebase project right away, and opening the app on any device with the same code pulls in what's new. Off by default; your diary stays local-only until you set a code here.</p>
       <div class="field" style="max-width:340px;">
         <label>Sync Code</label>
         <input type="text" id="sync-code" placeholder="choose a private code/passphrase" value="${escapeHTML(SETTINGS.syncCode||'')}">
       </div>
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <button class="btn" id="btn-save-synccode">Save Code</button>
-        <button class="btn btn-primary" id="btn-sync-now">🔄 Sync Now</button>
+        <button class="btn" id="btn-sync-now">🔄 Sync Now (manual)</button>
         <span class="muted" style="font-size:0.8rem;">${escapeHTML(syncStatusLine())}</span>
       </div>
-      <p class="muted" style="font-size:0.78rem; margin-top:10px; margin-bottom:0;">The Sync Code is a shared secret, not a login — anyone who knows it can read/write that code's data, so keep it as private as a password. See README.md for the one-time Firebase console setup (enable Anonymous sign-in, set the security rules).</p>
+      <p class="muted" style="font-size:0.78rem; margin-top:10px; margin-bottom:0;">"Sync Now" is just a manual fallback (e.g. after being offline) — you shouldn't normally need it. The Sync Code is a shared secret, not a login — anyone who knows it can read/write that code's data, so keep it as private as a password. See README.md for the one-time Firebase console setup (enable Anonymous sign-in, set the security rules).</p>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">Demo Data</h3>
@@ -505,6 +505,8 @@ async function saveEntry(navigateAway){
   await DB.delete('drafts', 'current').catch(()=>{});
   await loadAllWithMedia();
   renderYearNav();
+  const savedEntry = ENTRIES.find(x=>x.id===entry.id);
+  if(savedEntry) autoPushEntry(savedEntry); // fire-and-forget; see sync.js
   if(navigateAway!==false){ navigate('entry',{id:entry.id}); toast('✓ Entry saved'); }
   else { setSaveIndicator('✓ Saved'); }
 }

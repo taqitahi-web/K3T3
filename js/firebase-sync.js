@@ -98,5 +98,5 @@ async function pullAll(code){
 
 window.cloudSync = {
   ready: authReady.then(u=> !!u).catch(()=>false),
-  pushAll, pullAll, deleteRemoteEntry
+  pushEntry, pushAll, pullAll, deleteRemoteEntry
 };
