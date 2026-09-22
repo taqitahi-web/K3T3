@@ -158,8 +158,6 @@ function bindDynamicEvents(){
     if(SETTINGS.syncCode){ toast('✓ Sync Code saved — syncing now'); syncNow(); }
     else toast('Sync Code cleared — cloud sync is off');
   });
-  const btnSyncNow = $('#btn-sync-now');
-  if(btnSyncNow) btnSyncNow.addEventListener('click', syncNow);
 }
 
 /* ---------------- Mobile FAB (quick capture) ---------------- */

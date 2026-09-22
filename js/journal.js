@@ -262,10 +262,9 @@ function view_settings(){
       </div>
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <button class="btn" id="btn-save-synccode">Save Code</button>
-        <button class="btn" id="btn-sync-now">🔄 Sync Now (manual)</button>
         <span class="muted" style="font-size:0.8rem;">${escapeHTML(syncStatusLine())}</span>
       </div>
-      <p class="muted" style="font-size:0.78rem; margin-top:10px; margin-bottom:0;">"Sync Now" is just a manual fallback (e.g. after being offline) — you shouldn't normally need it. The Sync Code is a shared secret, not a login — anyone who knows it can read/write that code's data, so keep it as private as a password. See README.md for the one-time Firebase console setup (enable Anonymous sign-in, set the security rules).</p>
+      <p class="muted" style="font-size:0.78rem; margin-top:10px; margin-bottom:0;">The Sync Code is a shared secret, not a login — anyone who knows it can read/write that code's data, so keep it as private as a password. See README.md for the one-time Firebase console setup (enable Anonymous sign-in, set the security rules).</p>
     </div>
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">Demo Data</h3>
