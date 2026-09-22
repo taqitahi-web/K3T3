@@ -17,24 +17,46 @@
 
    Note: Firebase's SDK is fetched from https://www.gstatic.com — the
    Claude artifact preview's content-security policy does not allow
-   scripts from that host, so cloud sync only actually connects when
-   this app is self-hosted (e.g. GitHub Pages), not on the claude.ai
-   artifact link. We detect that case below instead of saying
-   "connecting…" forever.
+   scripts from that host, so cloud sync only ever connects when this
+   app is self-hosted (e.g. GitHub Pages), never on the claude.ai
+   artifact link.
+
+   Every push/pull below does its OWN short wait-and-retry for
+   window.cloudSync via waitForCloudSync() rather than trusting a single
+   shared "is it available" flag computed once — a slow connection
+   loading three chained Firebase modules from gstatic.com could easily
+   take longer than a few seconds, and a flag that gets set to "gone"
+   after one short timeout would then silently disable sync forever
+   even once the module finishes loading a moment later.
 
    Remember: the Sync Code itself is local to each device/browser — it
    does NOT come from the cloud. A second device needs the exact same
    code typed into its own Settings → Cloud Sync before it will pull
    anything down. */
 
-let cloudSyncUnavailable = false;
-setTimeout(()=>{ if(!window.cloudSync) cloudSyncUnavailable = true; }, 4000);
+// Polls for window.cloudSync up to maxWaitMs. Resolves with it once
+// found, or null if it never shows up in time.
+function waitForCloudSync(maxWaitMs){
+  return new Promise(resolve=>{
+    const start = Date.now();
+    (function poll(){
+      if(window.cloudSync) return resolve(window.cloudSync);
+      if(Date.now() - start >= maxWaitMs) return resolve(null);
+      setTimeout(poll, 200);
+    })();
+  });
+}
+
+// Only for the Settings status line (a synchronous render — can't
+// await there). Purely informational; push/pull never rely on this.
+let cloudSyncLikelyBlocked = false;
+setTimeout(()=>{ if(!window.cloudSync) cloudSyncLikelyBlocked = true; }, 10000);
 
 function syncStatusLine(){
   if(!SETTINGS.syncCode) return 'Cloud sync is off — set a Sync Code below to turn it on.';
-  if(cloudSyncUnavailable) return "Cloud sync isn't reachable here (this Claude preview blocks Firebase's CDN) — it works from the self-hosted copy, e.g. GitHub Pages.";
-  if(!window.cloudSync) return 'Connecting to Firebase…';
-  return SETTINGS.lastSync ? `Auto-syncing. Last activity: ${fmtDateLong(SETTINGS.lastSync.slice(0,10))} ${fmtTime12(SETTINGS.lastSync.slice(11,16))}` : 'Auto-syncing — nothing pushed yet.';
+  if(window.cloudSync) return SETTINGS.lastSync ? `Auto-syncing. Last activity: ${fmtDateLong(SETTINGS.lastSync.slice(0,10))} ${fmtTime12(SETTINGS.lastSync.slice(11,16))}` : 'Auto-syncing — nothing pushed yet.';
+  if(cloudSyncLikelyBlocked) return "Cloud sync isn't reachable here (this Claude preview blocks Firebase's CDN, or your connection is slow) — it works from the self-hosted copy, e.g. GitHub Pages.";
+  return 'Connecting to Firebase…';
 }
 
 // Merges a batch of remote entries into local storage: anything missing
@@ -68,17 +90,16 @@ async function mergeRemoteEntries(remoteEntries){
 }
 
 // Called right after an entry is saved (journal.js). Fire-and-forget —
-// a save should never feel slow or fail because the network is down;
-// if this doesn't go through, the next "Sync Now" (or the next
-// successful auto-push) catches it up since pushEntry always sends the
-// full current entry, not a diff.
+// a save should never feel slow because the network is slow; it just
+// waits up to 8s in the background for the Firebase module, then pushes.
 async function autoPushEntry(entry){
-  if(!SETTINGS.syncCode || cloudSyncUnavailable) return;
-  if(!window.cloudSync){ toast("Saved locally, but couldn't reach the cloud sync module yet — it'll catch up on next save"); return; }
+  if(!SETTINGS.syncCode) return;
+  const cloudSync = await waitForCloudSync(8000);
+  if(!cloudSync){ toast("Saved locally, but couldn't reach the cloud sync module — it'll retry on the next save"); return; }
   try{
-    const ok = await window.cloudSync.ready;
+    const ok = await cloudSync.ready;
     if(!ok){ toast('Saved locally, but cloud sign-in failed — check Firebase Anonymous auth is enabled'); return; }
-    await window.cloudSync.pushEntry(SETTINGS.syncCode, entry);
+    await cloudSync.pushEntry(SETTINGS.syncCode, entry);
     SETTINGS.lastSync = new Date().toISOString();
     saveSettings();
   }catch(err){
@@ -87,18 +108,17 @@ async function autoPushEntry(entry){
   }
 }
 
-// Called once from app.js's init(). Waits a moment for the Firebase
-// module to load, then pulls anything newer from the cloud — silent
-// unless something actually changed, so it doesn't nag on every launch.
+// Called once from app.js's init(). Waits for the Firebase module, then
+// pulls anything newer from the cloud — silent unless something
+// actually changed, so it doesn't nag on every launch.
 async function autoPullOnStartup(){
   if(!SETTINGS.syncCode) return;
-  for(let i=0;i<20 && !window.cloudSync && !cloudSyncUnavailable;i++) await new Promise(r=>setTimeout(r,250));
-  if(cloudSyncUnavailable) return; // artifact preview — already explained in Settings
-  if(!window.cloudSync){ toast("Cloud sync module didn't load — check your internet connection"); return; }
+  const cloudSync = await waitForCloudSync(8000);
+  if(!cloudSync) return; // likely the artifact preview (CSP-blocked) — Settings explains this
   try{
-    const ok = await window.cloudSync.ready;
+    const ok = await cloudSync.ready;
     if(!ok){ toast('Cloud sign-in failed — check Firebase Anonymous auth is enabled'); return; }
-    const remoteEntries = await window.cloudSync.pullAll(SETTINGS.syncCode);
+    const remoteEntries = await cloudSync.pullAll(SETTINGS.syncCode);
     const pulled = await mergeRemoteEntries(remoteEntries);
     if(pulled){
       await loadAllWithMedia();
@@ -117,15 +137,15 @@ async function autoPullOnStartup(){
 // (see app.js), to catch up whatever already existed before syncing began.
 async function syncNow(){
   if(!SETTINGS.syncCode){ toast('Set a Sync Code first'); return; }
-  if(cloudSyncUnavailable){ toast("Cloud sync isn't reachable in this Claude preview — use the self-hosted copy"); return; }
-  if(!window.cloudSync){ toast('Still connecting to Firebase — try again in a moment'); return; }
-  const ok = await window.cloudSync.ready;
+  const cloudSync = await waitForCloudSync(8000);
+  if(!cloudSync){ toast("Couldn't reach the cloud sync module — check your connection, or this may be the Claude preview (self-hosted only)"); return; }
+  const ok = await cloudSync.ready;
   if(!ok){ toast('Could not sign in to Firebase — check your Firebase project setup'); return; }
 
   toast('Syncing…');
   try{
-    await window.cloudSync.pushAll(SETTINGS.syncCode, ENTRIES);
-    const remoteEntries = await window.cloudSync.pullAll(SETTINGS.syncCode);
+    await cloudSync.pushAll(SETTINGS.syncCode, ENTRIES);
+    const remoteEntries = await cloudSync.pullAll(SETTINGS.syncCode);
     const pulled = await mergeRemoteEntries(remoteEntries);
 
     SETTINGS.lastSync = new Date().toISOString();
