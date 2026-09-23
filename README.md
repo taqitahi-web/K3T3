@@ -39,11 +39,14 @@ pages-from-my-life/
 │   ├── search.js             Full-journal search
 │   ├── export.js             Backup export/import (JSON)
 │   ├── share.js               Per-entry sharing: URL-encoded share link + standalone shareable HTML file
+│   ├── sync.js                 Cloud sync orchestration (auto push on save/delete, auto pull on open)
 │   ├── journal.js            Entry model, dashboard/timeline/year/month/
 │   │                         favorites/on-this-day/stats/detail (incl.
 │   │                         Original/English/中文 translation tabs),
 │   │                         the editor, autosave, demo data, draft recovery
-│   └── app.js                Router, render dispatcher, event binding, FAB, bootstrap
+│   ├── app.js                Router, render dispatcher, event binding, FAB, bootstrap
+│   └── firebase-sync.js      Optional Firebase (Realtime Database + Anonymous Auth) cloud sync —
+│                             loaded as an ES module (<script type="module">), see "Cloud Sync" below
 └── assets/
     ├── icons/                PWA icons (placeholders — swap for your own)
     └── images/               (empty — for any images you add yourself)
@@ -113,6 +116,65 @@ Tags also get a small colorful touch everywhere: each tag name always
 renders in the same hue (computed from the tag text), so `#Cycling` is
 always the same color across the whole app, in every theme.
 
+## Cloud Sync (Firebase)
+
+Off by default — the diary stays local-only (IndexedDB) until you set a
+**Sync Code** in **Settings → Cloud Sync**. Once you do, it's automatic:
+
+1. Every add/edit/delete pushes just that one entry (including its
+   photos/voice notes, as base64) to your Firebase **Realtime
+   Database** right away.
+2. Opening the app pulls anything newer from the cloud once in the
+   background — no button needed.
+
+Use the **same Sync Code** on another device's copy of this app and
+it'll pick up existing entries the next time it opens.
+
+**Why Realtime Database and not Firestore/Storage?** Firebase now
+requires a paid **Blaze** billing plan just to turn on Cloud Storage,
+even if you never leave the free quota. Realtime Database has no such
+requirement — it's fully usable on the free **Spark** plan, so that's
+what this app uses for both entry data and photo/audio bytes.
+
+**⚠️ Only works on a self-hosted copy (e.g. GitHub Pages), not the
+Claude artifact link.** Firebase's SDK loads from `www.gstatic.com`,
+and the Claude artifact preview's content-security policy blocks
+scripts from that host. Settings will tell you this plainly instead of
+just spinning forever.
+
+**One-time Firebase console setup:**
+
+1. **Realtime Database → Create Database.** Pick any region, Spark
+   (free) plan — no billing needed. Once created, Firebase shows a
+   **databaseURL** at the top of the Data tab — this project's is
+   already wired into `firebaseConfig.databaseURL` in
+   `js/firebase-sync.js`, so you only need this step if you ever switch
+   to a different Firebase project.
+2. **Authentication → Sign-in method → Anonymous → Enable.** This app
+   signs in anonymously purely so the rule below can require "must be
+   signed in" — there's no email/password screen for you.
+3. **Realtime Database → Rules**, replace the contents with:
+   ```json
+   {
+     "rules": {
+       "syncCodes": {
+         "$code": {
+           ".read": "auth != null",
+           ".write": "auth != null"
+         }
+       }
+     }
+   }
+   ```
+   then **Publish**.
+
+**Security model, plainly:** your Sync Code is a shared secret, not a
+login — anyone who learns it can read and write that code's data (the
+rule above only checks "is this a signed-in Firebase user", which
+anonymous sign-in satisfies for anyone). This keeps out casual internet
+crawlers, not a determined attacker who somehow learns your code. Pick
+something you wouldn't post publicly, and treat it like a password.
+
 ## Sharing a single entry
 
 Opening an entry (Original tab) has two share options — this app has no
@@ -148,6 +210,8 @@ diary.
 
 ## Privacy
 
-Nothing about your journal is sent anywhere. There is no analytics, no
-tracking, and no network calls except loading the two Google Fonts and,
-optionally, a backup file you choose to export.
+By default, nothing about your journal leaves this device. There is no
+analytics, no tracking, and no network calls except loading the two
+Google Fonts and, optionally, a backup file you choose to export. If
+you turn on **Cloud Sync** (see above) with your own Sync Code, entries
+and media go to your own Firebase project — no other third party.

@@ -127,6 +127,7 @@ function bindDynamicEvents(){
       for(const p of (e._photos||[])) await DB.delete('photos', p.id);
       for(const a of (e._audio||[])) await DB.delete('audio', a.id);
       await DB.delete('entries', id);
+      if(SETTINGS.syncCode && window.cloudSync) window.cloudSync.deleteRemoteEntry(SETTINGS.syncCode, id).catch(()=>{});
       await loadAllWithMedia(); renderYearNav();
       toast('Entry deleted');
       navigate('home');
@@ -149,6 +150,15 @@ function bindDynamicEvents(){
     if(!a || a.length<4){ toast('PIN should be at least 4 digits'); return; }
     if(a!==b){ toast("PINs don't match"); return; }
     SETTINGS.pin = a; await saveSettings(); toast('✓ PIN updated'); $('#pin-new').value=''; $('#pin-confirm').value='';
+  });
+
+  const btnSaveSyncCode = $('#btn-save-synccode');
+  if(btnSaveSyncCode) btnSaveSyncCode.addEventListener('click', async ()=>{
+    SETTINGS.syncCode = $('#sync-code').value.trim();
+    await saveSettings();
+    if(CURRENT_ROUTE==='settings') render();
+    if(SETTINGS.syncCode){ toast('✓ Sync Code saved — syncing now'); syncNow(); }
+    else toast('Sync Code cleared — cloud sync is off');
   });
 }
 
@@ -198,6 +208,7 @@ async function init(){
   bindStaticEvents();
   navigate('home');
   checkDraftRecovery();
+  autoPullOnStartup(); // fire-and-forget; see sync.js
 
   if('serviceWorker' in navigator){
     navigator.serviceWorker.register('service-worker.js').catch(()=>{ /* offline install is optional */ });

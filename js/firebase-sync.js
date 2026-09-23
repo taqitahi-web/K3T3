@@ -1,9 +1,8 @@
 /* firebase-sync.js — optional cloud sync using YOUR Firebase project,
-   via the Realtime Database (Firestore + Cloud Storage were dropped
-   because Firebase now requires a paid Blaze plan just to enable
-   Storage, even for free-tier usage — Realtime Database stays free on
-   the Spark plan). Anonymous Auth is used only so the security rules
-   below can require "must be signed in".
+   via the Realtime Database (not Firestore/Storage — those require a
+   paid Blaze plan just to enable Storage, even for free-tier usage;
+   Realtime Database stays free on the Spark plan). Anonymous Auth is
+   used only so the security rules below can require "must be signed in".
 
    This file is loaded as a native ES module:
      <script type="module" src="js/firebase-sync.js"></script>
@@ -15,9 +14,8 @@
    IMPORTANT — one-time setup (also see README.md):
    1. Firebase console → Realtime Database → Create Database (Spark/free
       plan is fine — no billing needed).
-   2. Copy the databaseURL Firebase shows you (looks like
-      https://<project>-default-rtdb.<region>.firebasedatabase.app) into
-      firebaseConfig.databaseURL below.
+   2. Copy the databaseURL Firebase shows you into firebaseConfig.databaseURL
+      below (already done for this project).
    3. Authentication → Sign-in method → Anonymous → Enable.
    4. Realtime Database → Rules → paste the JSON rules from README.md.
    Without step 4 your data is wide open to the internet; with only
@@ -39,10 +37,6 @@ const firebaseConfig = {
   storageBucket: "k3t3-e89c0.firebasestorage.app",
   messagingSenderId: "629317146848",
   appId: "1:629317146848:web:ce27c836c75bf33af09885",
-  // ⬇️ REQUIRED for Realtime Database — paste the URL Firebase shows you
-  // right after you create the database (Firebase console → Realtime
-  // Database → top of the Data tab). Looks like:
-  // "https://k3t3-e89c0-default-rtdb.asia-southeast1.firebasedatabase.app"
   databaseURL: "https://k3t3-e89c0-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
